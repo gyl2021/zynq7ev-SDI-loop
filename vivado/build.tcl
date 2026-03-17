@@ -179,18 +179,21 @@ proc connect_net_list {pin_list net_desc} {
 }
 
 proc connect_optional_pin_to_net {src_pin dst_cell pin_candidates desc} {
+  set matched 0
   foreach pin_name $pin_candidates {
     set p [get_bd_pins -quiet ${dst_cell}/${pin_name}]
     if {[llength $p] > 0} {
+      set matched 1
       if {[catch {connect_bd_net $src_pin [lindex $p 0]} err]} {
         puts "INFO: ${desc} (${dst_cell}/${pin_name}) not connected: $err"
       } else {
         puts "Connected ${desc}: ${src_pin} -> ${dst_cell}/${pin_name}"
       }
-      return
     }
   }
-  puts "INFO: ${desc} not present on ${dst_cell}; skipping"
+  if {!$matched} {
+    puts "INFO: ${desc} not present on ${dst_cell}; skipping"
+  }
 }
 
 proc assign_fixed_addr_if_present {addr_seg_path base_addr range_bytes} {
