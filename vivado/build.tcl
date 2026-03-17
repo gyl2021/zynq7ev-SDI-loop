@@ -15,6 +15,28 @@ proc pick_latest_ip_vlnv {ip_name} {
   return [lindex $sorted end]
 }
 
+proc pick_first_available_ip_vlnv {ip_name_list} {
+  foreach ip_name $ip_name_list {
+    set vlnv [pick_latest_ip_vlnv $ip_name]
+    if {$vlnv ne ""} {
+      return $vlnv
+    }
+  }
+  return ""
+}
+
+proc print_sdi_ip_catalog_hint {} {
+  set all_sdi [lsort -dictionary [get_ipdefs -all -quiet -filter {VLNV =~ xilinx.com:ip:*sdi*}]]
+  puts "Available xilinx.com SDI-related IPs:"
+  if {[llength $all_sdi] == 0} {
+    puts "  (none found)"
+  } else {
+    foreach d $all_sdi {
+      puts "  $d"
+    }
+  }
+}
+
 puts "=== Step 1: Create project ==="
 create_project sdi_loopthrough ./sdi_loopthrough \
   -part xczu7ev-ffvc1156-2-e -force
@@ -37,9 +59,13 @@ set_property -dict [list \
 ] [get_bd_cells zynq_ps]
 
 puts "=== Step 4: Create SDI RX Subsystem ==="
-set sdi_rx_vlnv [pick_latest_ip_vlnv "v_smpte_sdi_rx_ss"]
+set sdi_rx_vlnv [pick_first_available_ip_vlnv [list \
+  "v_smpte_sdi_rx_ss" \
+  "v_smpte_uhdsdi_rx_ss" \
+]]
 if {$sdi_rx_vlnv eq ""} {
-  error "No SDI RX subsystem IP found in catalog (expected xilinx.com:ip:v_smpte_sdi_rx_ss:*)."
+  print_sdi_ip_catalog_hint
+  error "No SDI RX subsystem IP found in catalog (tried: v_smpte_sdi_rx_ss, v_smpte_uhdsdi_rx_ss)."
 }
 puts "Using SDI RX IP: $sdi_rx_vlnv"
 create_bd_cell -type ip \
@@ -53,9 +79,13 @@ set_property -dict [list \
 ] [get_bd_cells sdi_rx_ss]
 
 puts "=== Step 5: Create SDI TX Subsystem ==="
-set sdi_tx_vlnv [pick_latest_ip_vlnv "v_smpte_sdi_tx_ss"]
+set sdi_tx_vlnv [pick_first_available_ip_vlnv [list \
+  "v_smpte_sdi_tx_ss" \
+  "v_smpte_uhdsdi_tx_ss" \
+]]
 if {$sdi_tx_vlnv eq ""} {
-  error "No SDI TX subsystem IP found in catalog (expected xilinx.com:ip:v_smpte_sdi_tx_ss:*)."
+  print_sdi_ip_catalog_hint
+  error "No SDI TX subsystem IP found in catalog (tried: v_smpte_sdi_tx_ss, v_smpte_uhdsdi_tx_ss)."
 }
 puts "Using SDI TX IP: $sdi_tx_vlnv"
 create_bd_cell -type ip \
