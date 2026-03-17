@@ -37,6 +37,54 @@ proc print_sdi_ip_catalog_hint {} {
   }
 }
 
+
+proc set_config_if_exists {cell_name prop_name prop_value} {
+  set obj [get_bd_cells $cell_name]
+  set prop_path "CONFIG.${prop_name}"
+  set props [list_property $obj]
+  if {[lsearch -exact $props $prop_path] >= 0} {
+    if {[catch {set_property -dict [list $prop_path $prop_value] $obj} err]} {
+      puts "WARNING: Failed to set ${cell_name}.${prop_name}=${prop_value}: $err"
+    } else {
+      puts "Configured ${cell_name}.${prop_name}=${prop_value}"
+    }
+  } else {
+    puts "INFO: ${cell_name}.${prop_name} not present for this IP variant; skipping"
+  }
+}
+
+proc configure_sdi_rx {cell_name ip_vlnv} {
+  set is_uhd [expr {[string first "uhdsdi" $ip_vlnv] >= 0}]
+  if {$is_uhd} {
+    puts "Applying UHD-SDI RX configuration profile"
+    set_config_if_exists $cell_name C_LINE_RATE {3G_SDI}
+    set_config_if_exists $cell_name C_SDI_MODE {3G_SDI}
+  } else {
+    puts "Applying SMPTE-SDI RX configuration profile"
+    set_config_if_exists $cell_name C_SDI_MODE {3G_SDI}
+    set_config_if_exists $cell_name C_INCLUDE_RX {1}
+    set_config_if_exists $cell_name C_RX_TDATA_WIDTH {20}
+    set_config_if_exists $cell_name C_LINE_RATE {2970}
+    set_config_if_exists $cell_name C_INCLUDE_VID_OVER_AXI {1}
+  }
+}
+
+proc configure_sdi_tx {cell_name ip_vlnv} {
+  set is_uhd [expr {[string first "uhdsdi" $ip_vlnv] >= 0}]
+  if {$is_uhd} {
+    puts "Applying UHD-SDI TX configuration profile"
+    set_config_if_exists $cell_name C_LINE_RATE {3G_SDI}
+    set_config_if_exists $cell_name C_SDI_MODE {3G_SDI}
+  } else {
+    puts "Applying SMPTE-SDI TX configuration profile"
+    set_config_if_exists $cell_name C_SDI_MODE {3G_SDI}
+    set_config_if_exists $cell_name C_INCLUDE_TX {1}
+    set_config_if_exists $cell_name C_TX_TDATA_WIDTH {20}
+    set_config_if_exists $cell_name C_LINE_RATE {2970}
+    set_config_if_exists $cell_name C_INCLUDE_VID_OVER_AXI {1}
+  }
+}
+
 puts "=== Step 1: Create project ==="
 create_project sdi_loopthrough ./sdi_loopthrough \
   -part xczu7ev-ffvc1156-2-e -force
@@ -70,13 +118,7 @@ if {$sdi_rx_vlnv eq ""} {
 puts "Using SDI RX IP: $sdi_rx_vlnv"
 create_bd_cell -type ip \
   -vlnv $sdi_rx_vlnv sdi_rx_ss
-set_property -dict [list \
-  CONFIG.C_SDI_MODE               {3G_SDI} \
-  CONFIG.C_INCLUDE_RX             {1}      \
-  CONFIG.C_RX_TDATA_WIDTH         {20}     \
-  CONFIG.C_LINE_RATE              {2970}   \
-  CONFIG.C_INCLUDE_VID_OVER_AXI   {1}      \
-] [get_bd_cells sdi_rx_ss]
+configure_sdi_rx sdi_rx_ss $sdi_rx_vlnv
 
 puts "=== Step 5: Create SDI TX Subsystem ==="
 set sdi_tx_vlnv [pick_first_available_ip_vlnv [list \
@@ -90,13 +132,7 @@ if {$sdi_tx_vlnv eq ""} {
 puts "Using SDI TX IP: $sdi_tx_vlnv"
 create_bd_cell -type ip \
   -vlnv $sdi_tx_vlnv sdi_tx_ss
-set_property -dict [list \
-  CONFIG.C_SDI_MODE               {3G_SDI} \
-  CONFIG.C_INCLUDE_TX             {1}      \
-  CONFIG.C_TX_TDATA_WIDTH         {20}     \
-  CONFIG.C_LINE_RATE              {2970}   \
-  CONFIG.C_INCLUDE_VID_OVER_AXI   {1}      \
-] [get_bd_cells sdi_tx_ss]
+configure_sdi_tx sdi_tx_ss $sdi_tx_vlnv
 
 puts "=== Step 6: Create AXI Interconnect ==="
 create_bd_cell -type ip \
