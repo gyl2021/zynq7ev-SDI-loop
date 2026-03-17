@@ -5,6 +5,11 @@ if {[llength [get_projects -quiet]] > 0} {
   close_project
 }
 
+set script_dir [file dirname [file normalize [info script]]]
+set proj_dir [file normalize [file join $script_dir sdi_loopthrough]]
+set xsa_out [file normalize [file join $script_dir sdi_loopthrough.xsa]]
+set constraints_file [file normalize [file join $script_dir constraints top.xdc]]
+
 
 proc pick_latest_ip_vlnv {ip_name} {
   set defs [get_ipdefs -all -quiet -filter "VLNV =~ xilinx.com:ip:${ip_name}:*"]
@@ -218,7 +223,7 @@ proc assign_addr_if_present {addr_seg_path} {
 }
 
 puts "=== Step 1: Create project ==="
-create_project sdi_loopthrough ./sdi_loopthrough \
+create_project sdi_loopthrough $proj_dir \
   -part xczu7ev-ffvc1156-2-e -force
 set_property target_language Verilog [current_project]
 
@@ -308,6 +313,8 @@ connect_net_list $periph_rst_nets "peripheral resets"
 # UHD-SDI variants can expose additional active-low reset pins for local domains.
 connect_optional_pin_to_net [get_bd_pins proc_sys_reset_0/peripheral_aresetn] sdi_rx_ss [list s_axi_arstn video_out_arstn] "RX local resetn"
 connect_optional_pin_to_net [get_bd_pins proc_sys_reset_0/peripheral_aresetn] sdi_tx_ss [list s_axi_arstn video_in_arstn] "TX local resetn"
+connect_optional_pin_to_net [get_bd_pins proc_sys_reset_0/peripheral_reset] sdi_rx_ss [list sdi_rx_rst] "RX local reset (active-high)"
+connect_optional_pin_to_net [get_bd_pins proc_sys_reset_0/peripheral_reset] sdi_tx_ss [list sdi_tx_rst] "TX local reset (active-high)"
 
 puts "=== Step 11: Connect AXI interfaces ==="
 connect_bd_intf_net   [get_bd_intf_pins zynq_ps/M_AXI_HPM0_FPD]   [get_bd_intf_pins axi_ic/S00_AXI]
@@ -355,22 +362,38 @@ assign_fixed_addr_if_present "axi_gpio_0/S_AXI/Reg" 0xA0020000 64K
 puts "=== Step 14: Build GPIO status vector ==="
 create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconcat:2.1 xlconcat_0
 set_property CONFIG.NUM_PORTS {8} [get_bd_cells xlconcat_0]
+
+create_bd_cell -type ip   -vlnv xilinx.com:ip:xlslice:1.0 xlslice_rx_locked
+create_bd_cell -type ip   -vlnv xilinx.com:ip:xlslice:1.0 xlslice_tx_locked
+create_bd_cell -type ip   -vlnv xilinx.com:ip:xlslice:1.0 xlslice_rx_ce
+create_bd_cell -type ip   -vlnv xilinx.com:ip:xlslice:1.0 xlslice_rx_mode_locked
+set_property -dict [list CONFIG.DIN_FROM {0} CONFIG.DIN_TO {0} CONFIG.DIN_WIDTH {32} CONFIG.DOUT_WIDTH {1}] [get_bd_cells xlslice_rx_locked]
+set_property -dict [list CONFIG.DIN_FROM {0} CONFIG.DIN_TO {0} CONFIG.DIN_WIDTH {32} CONFIG.DOUT_WIDTH {1}] [get_bd_cells xlslice_tx_locked]
+set_property -dict [list CONFIG.DIN_FROM {0} CONFIG.DIN_TO {0} CONFIG.DIN_WIDTH {32} CONFIG.DOUT_WIDTH {1}] [get_bd_cells xlslice_rx_ce]
+set_property -dict [list CONFIG.DIN_FROM {0} CONFIG.DIN_TO {0} CONFIG.DIN_WIDTH {32} CONFIG.DOUT_WIDTH {1}] [get_bd_cells xlslice_rx_mode_locked]
+
 create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_stat0
-set_property -dict [list   CONFIG.CONST_WIDTH {1}   CONFIG.CONST_VAL   {0} ] [get_bd_cells xlconstant_stat0]
+set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {0}] [get_bd_cells xlconstant_stat0]
 
 set rx_locked_pin [get_first_bd_pin sdi_rx_ss [list rx_locked rx_mode_locked]]
 set tx_locked_pin [get_first_bd_pin sdi_tx_ss [list tx_locked tx_mode_locked]]
 set rx_ce_pin [get_first_bd_pin sdi_rx_ss [list rx_ce]]
 set rx_mode_lock_pin [get_first_bd_pin sdi_rx_ss [list sdi_rx_mode_locked rx_mode_locked]]
 
-if {$rx_locked_pin ne ""} { connect_bd_net $rx_locked_pin [get_bd_pins xlconcat_0/In0] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In0] }
-if {$tx_locked_pin ne ""} { connect_bd_net $tx_locked_pin [get_bd_pins xlconcat_0/In1] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In1] }
-if {$rx_ce_pin ne ""} { connect_bd_net $rx_ce_pin [get_bd_pins xlconcat_0/In2] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In2] }
-if {$rx_mode_lock_pin ne ""} { connect_bd_net $rx_mode_lock_pin [get_bd_pins xlconcat_0/In3] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In3] }
+if {$rx_locked_pin ne ""} { connect_bd_net $rx_locked_pin [get_bd_pins xlslice_rx_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlslice_rx_locked/Din] }
+if {$tx_locked_pin ne ""} { connect_bd_net $tx_locked_pin [get_bd_pins xlslice_tx_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlslice_tx_locked/Din] }
+if {$rx_ce_pin ne ""} { connect_bd_net $rx_ce_pin [get_bd_pins xlslice_rx_ce/Din] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlslice_rx_ce/Din] }
+if {$rx_mode_lock_pin ne ""} { connect_bd_net $rx_mode_lock_pin [get_bd_pins xlslice_rx_mode_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlslice_rx_mode_locked/Din] }
 
-create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_0
-set_property -dict [list   CONFIG.CONST_WIDTH {4}   CONFIG.CONST_VAL   {0} ] [get_bd_cells xlconstant_0]
-connect_bd_net [get_bd_pins xlconstant_0/dout]   [get_bd_pins xlconcat_0/In4]
+connect_bd_net [get_bd_pins xlslice_rx_locked/Dout] [get_bd_pins xlconcat_0/In0]
+connect_bd_net [get_bd_pins xlslice_tx_locked/Dout] [get_bd_pins xlconcat_0/In1]
+connect_bd_net [get_bd_pins xlslice_rx_ce/Dout] [get_bd_pins xlconcat_0/In2]
+connect_bd_net [get_bd_pins xlslice_rx_mode_locked/Dout] [get_bd_pins xlconcat_0/In3]
+connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In4]
+connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In5]
+connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In6]
+connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In7]
+
 connect_bd_net [get_bd_pins xlconcat_0/dout]   [get_bd_pins axi_gpio_0/gpio_io_i]
 
 puts "=== Step 15: Create top-level external ports ==="
@@ -410,14 +433,14 @@ save_bd_design
 generate_target all [get_files system.bd]
 make_wrapper -files [get_files system.bd] -top
 add_files -norecurse \
-  ./sdi_loopthrough.gen/sources_1/bd/system/hdl/system_wrapper.v
+  $proj_dir/sdi_loopthrough.gen/sources_1/bd/system/hdl/system_wrapper.v
 set_property top system_wrapper [current_fileset]
 
 puts "=== Step 16b: Add constraints (if present) ==="
-if {[file exists ./vivado/constraints/top.xdc]} {
-  add_files -fileset constrs_1 -norecurse ./vivado/constraints/top.xdc
+if {[file exists $constraints_file]} {
+  add_files -fileset constrs_1 -norecurse $constraints_file
 } else {
-  puts "WARNING: ./vivado/constraints/top.xdc not found; skipping constraints add"
+  puts "WARNING: ${constraints_file} not found; skipping constraints add"
 }
 
 puts "=== Step 17: Run synthesis/implementation and export XSA ==="
@@ -425,6 +448,6 @@ launch_runs synth_1 -jobs 8
 wait_on_run synth_1
 launch_runs impl_1 -to_step write_bitstream -jobs 8
 wait_on_run impl_1
-write_hw_platform -fixed -include_bit -file ./sdi_loopthrough.xsa
+write_hw_platform -fixed -include_bit -file $xsa_out
 
 puts "=== DONE: sdi_loopthrough.xsa ==="
