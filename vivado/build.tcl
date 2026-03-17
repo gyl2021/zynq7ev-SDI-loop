@@ -178,6 +178,21 @@ proc connect_net_list {pin_list net_desc} {
   }
 }
 
+proc connect_optional_pin_to_net {src_pin dst_cell pin_candidates desc} {
+  foreach pin_name $pin_candidates {
+    set p [get_bd_pins -quiet ${dst_cell}/${pin_name}]
+    if {[llength $p] > 0} {
+      if {[catch {connect_bd_net $src_pin [lindex $p 0]} err]} {
+        puts "INFO: ${desc} (${dst_cell}/${pin_name}) not connected: $err"
+      } else {
+        puts "Connected ${desc}: ${src_pin} -> ${dst_cell}/${pin_name}"
+      }
+      return
+    }
+  }
+  puts "INFO: ${desc} not present on ${dst_cell}; skipping"
+}
+
 proc assign_fixed_addr_if_present {addr_seg_path base_addr range_bytes} {
   set seg [get_bd_addr_segs -quiet $addr_seg_path]
   if {[llength $seg] > 0} {
@@ -273,6 +288,10 @@ if {$rx_axi_aclk ne ""} { lappend clk_nets $rx_axi_aclk }
 if {$tx_axi_aclk ne ""} { lappend clk_nets $tx_axi_aclk }
 connect_net_list $clk_nets "PL/AXI clocks"
 
+# UHD-SDI variants can expose additional local clock pins that must be driven.
+connect_optional_pin_to_net [get_bd_pins zynq_ps/pl_clk0] sdi_rx_ss [list sdi_rx_clk video_out_clk] "RX local clock"
+connect_optional_pin_to_net [get_bd_pins zynq_ps/pl_clk0] sdi_tx_ss [list sdi_tx_clk video_in_clk] "TX local clock"
+
 puts "=== Step 10: Connect resets ==="
 connect_bd_net [get_bd_pins zynq_ps/pl_resetn0]   [get_bd_pins proc_sys_reset_0/ext_reset_in]
 connect_bd_net   [get_bd_pins proc_sys_reset_0/interconnect_aresetn]   [get_bd_pins axi_ic/ARESETN]   [get_bd_pins axi_ic/S00_ARESETN]   [get_bd_pins axi_ic/M00_ARESETN]   [get_bd_pins axi_ic/M01_ARESETN]   [get_bd_pins axi_ic/M02_ARESETN]
@@ -282,6 +301,10 @@ set periph_rst_nets [list   [get_bd_pins proc_sys_reset_0/peripheral_aresetn]   
 if {$rx_axi_aresetn ne ""} { lappend periph_rst_nets $rx_axi_aresetn }
 if {$tx_axi_aresetn ne ""} { lappend periph_rst_nets $tx_axi_aresetn }
 connect_net_list $periph_rst_nets "peripheral resets"
+
+# UHD-SDI variants can expose additional active-low reset pins for local domains.
+connect_optional_pin_to_net [get_bd_pins proc_sys_reset_0/peripheral_aresetn] sdi_rx_ss [list s_axi_arstn video_out_arstn] "RX local resetn"
+connect_optional_pin_to_net [get_bd_pins proc_sys_reset_0/peripheral_aresetn] sdi_tx_ss [list s_axi_arstn video_in_arstn] "TX local resetn"
 
 puts "=== Step 11: Connect AXI interfaces ==="
 connect_bd_intf_net   [get_bd_intf_pins zynq_ps/M_AXI_HPM0_FPD]   [get_bd_intf_pins axi_ic/S00_AXI]
