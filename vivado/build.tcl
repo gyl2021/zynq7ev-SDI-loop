@@ -106,6 +106,19 @@ proc get_first_bd_intf_pin {cell_name intf_name_list} {
   return ""
 }
 
+proc get_first_bd_intf_pin_by_pattern {cell_name pattern_list} {
+  set intf_list [get_bd_intf_pins -quiet -of_objects [get_bd_cells $cell_name]]
+  foreach pat $pattern_list {
+    foreach intf $intf_list {
+      set n [get_property NAME $intf]
+      if {[regexp -nocase $pat $n]} {
+        return $intf
+      }
+    }
+  }
+  return ""
+}
+
 proc connect_intf_if_present {src_intf dst_intf desc} {
   if {$src_intf eq "" || $dst_intf eq ""} {
     puts "WARNING: Skipping interface connection (${desc}) due to missing interface pin"
@@ -233,12 +246,19 @@ connect_intf_if_present [get_bd_intf_pins axi_ic/M01_AXI] $tx_s_axi "AXI IC M01 
 connect_bd_intf_net   [get_bd_intf_pins axi_ic/M02_AXI]   [get_bd_intf_pins axi_gpio_0/S_AXI]
 
 puts "=== Step 12: Connect SDI RX to SDI TX video stream ==="
-set rx_vid_out [get_first_bd_intf_pin sdi_rx_ss [list M_AXIS_VIDEO M_AXIS]]
-set tx_vid_in  [get_first_bd_intf_pin sdi_tx_ss [list S_AXIS_VIDEO S_AXIS]]
-if {$rx_vid_out eq "" || $tx_vid_in eq ""} {
-  error "Unable to find compatible SDI video-stream interfaces for RX->TX connection."
+set rx_vid_out [get_first_bd_intf_pin sdi_rx_ss [list M_AXIS_VIDEO M_AXIS M_AXIS_RX VIDEO_OUT]]
+set tx_vid_in  [get_first_bd_intf_pin sdi_tx_ss [list S_AXIS_VIDEO S_AXIS S_AXIS_TX VIDEO_IN]]
+if {$rx_vid_out eq ""} {
+  set rx_vid_out [get_first_bd_intf_pin_by_pattern sdi_rx_ss [list {M_AXIS.*VIDEO} {M_AXIS} {VIDEO_OUT}]]
 }
-connect_bd_intf_net $rx_vid_out $tx_vid_in
+if {$tx_vid_in eq ""} {
+  set tx_vid_in [get_first_bd_intf_pin_by_pattern sdi_tx_ss [list {S_AXIS.*VIDEO} {S_AXIS} {VIDEO_IN}]]
+}
+if {$rx_vid_out eq "" || $tx_vid_in eq ""} {
+  puts "WARNING: Unable to find compatible RX->TX AXI4-Stream video interfaces; skipping direct stream connection for this SDI IP variant"
+} else {
+  connect_bd_intf_net $rx_vid_out $tx_vid_in
+}
 
 puts "=== Step 13: Assign addresses ==="
 if {$rx_s_axi ne ""} {
