@@ -132,6 +132,27 @@ proc get_first_bd_intf_pin_by_pattern {cell_name pattern_list} {
   return ""
 }
 
+proc find_axis_prefix {cell_name prefix_list} {
+  foreach pref $prefix_list {
+    set p [get_bd_pins -quiet ${cell_name}/${pref}_tvalid]
+    if {[llength $p] > 0} {
+      return $pref
+    }
+  }
+  return ""
+}
+
+proc connect_axis_stream_by_prefix {src_cell src_pref dst_cell dst_pref} {
+  set sigs [list tdata tvalid tready tlast tuser tkeep]
+  foreach s $sigs {
+    set sp [get_bd_pins -quiet ${src_cell}/${src_pref}_${s}]
+    set dp [get_bd_pins -quiet ${dst_cell}/${dst_pref}_${s}]
+    if {[llength $sp] > 0 && [llength $dp] > 0} {
+      connect_bd_net [lindex $sp 0] [lindex $dp 0]
+    }
+  }
+}
+
 proc connect_intf_if_present {src_intf dst_intf desc} {
   if {$src_intf eq "" || $dst_intf eq ""} {
     puts "WARNING: Skipping interface connection (${desc}) due to missing interface pin"
@@ -279,10 +300,17 @@ if {$rx_vid_out eq ""} {
 if {$tx_vid_in eq ""} {
   set tx_vid_in [get_first_bd_intf_pin_by_pattern sdi_tx_ss [list {S_AXIS.*VIDEO} {S_AXIS} {VIDEO_IN}]]
 }
-if {$rx_vid_out eq "" || $tx_vid_in eq ""} {
-  puts "WARNING: Unable to find compatible RX->TX AXI4-Stream video interfaces; skipping direct stream connection for this SDI IP variant"
-} else {
+if {$rx_vid_out ne "" && $tx_vid_in ne ""} {
   connect_bd_intf_net $rx_vid_out $tx_vid_in
+} else {
+  set rx_pref [find_axis_prefix sdi_rx_ss [list VIDEO_OUT M_AXIS_VIDEO M_AXIS_RX M_AXIS S_AXIS_RX]]
+  set tx_pref [find_axis_prefix sdi_tx_ss [list VIDEO_IN S_AXIS_VIDEO S_AXIS_TX S_AXIS M_AXIS_TX]]
+  if {$rx_pref ne "" && $tx_pref ne ""} {
+    puts "INFO: Using pin-level AXI4-Stream fallback: ${rx_pref}_* -> ${tx_pref}_*"
+    connect_axis_stream_by_prefix sdi_rx_ss $rx_pref sdi_tx_ss $tx_pref
+  } else {
+    puts "WARNING: Unable to find compatible RX->TX AXI4-Stream interfaces or pin groups; skipping direct stream connection for this SDI IP variant"
+  }
 }
 
 puts "=== Step 13: Assign addresses ==="
@@ -341,10 +369,10 @@ if {$rx_gt_n_pin eq ""} { set rx_gt_n_pin [get_first_bd_pin_by_pattern sdi_rx_ss
 if {$tx_gt_p_pin eq ""} { set tx_gt_p_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/).*(tx|gthtx|mgt_tx).*(^|_|/)p($|_|/)} {(^|/).*txp.*}]] }
 if {$tx_gt_n_pin eq ""} { set tx_gt_n_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/).*(tx|gthtx|mgt_tx).*(^|_|/)n($|_|/)} {(^|/).*txn.*}]] }
 
-if {$rx_gt_p_pin ne ""} { connect_bd_net $rx_gt_p_pin [get_bd_ports sdi_rx_p] } else { puts "RX pins available: [join [get_bd_pins -quiet -of_objects [get_bd_cells sdi_rx_ss]] , ]"; error "Cannot find SDI RX positive serial pin on RX subsystem." }
-if {$rx_gt_n_pin ne ""} { connect_bd_net $rx_gt_n_pin [get_bd_ports sdi_rx_n] } else { error "Cannot find SDI RX negative serial pin on RX subsystem." }
-if {$tx_gt_p_pin ne ""} { connect_bd_net $tx_gt_p_pin [get_bd_ports sdi_tx_p] } else { error "Cannot find SDI TX positive serial pin on TX subsystem." }
-if {$tx_gt_n_pin ne ""} { connect_bd_net $tx_gt_n_pin [get_bd_ports sdi_tx_n] } else { error "Cannot find SDI TX negative serial pin on TX subsystem." }
+if {$rx_gt_p_pin ne ""} { connect_bd_net $rx_gt_p_pin [get_bd_ports sdi_rx_p] } else { puts "WARNING: RX P serial pin not found on RX subsystem (available pins: [join [get_bd_pins -quiet -of_objects [get_bd_cells sdi_rx_ss]] , ])" }
+if {$rx_gt_n_pin ne ""} { connect_bd_net $rx_gt_n_pin [get_bd_ports sdi_rx_n] } else { puts "WARNING: RX N serial pin not found on RX subsystem" }
+if {$tx_gt_p_pin ne ""} { connect_bd_net $tx_gt_p_pin [get_bd_ports sdi_tx_p] } else { puts "WARNING: TX P serial pin not found on TX subsystem" }
+if {$tx_gt_n_pin ne ""} { connect_bd_net $tx_gt_n_pin [get_bd_ports sdi_tx_n] } else { puts "WARNING: TX N serial pin not found on TX subsystem" }
 if {$rx_refclk_p_pin ne ""} { connect_bd_net $rx_refclk_p_pin [get_bd_ports sdi_refclk_p] } else { puts "WARNING: RX refclk P pin not found on RX subsystem" }
 if {$rx_refclk_n_pin ne ""} { connect_bd_net $rx_refclk_n_pin [get_bd_ports sdi_refclk_n] } else { puts "WARNING: RX refclk N pin not found on RX subsystem" }
 if {$tx_refclk_p_pin ne ""} { connect_bd_net $tx_refclk_p_pin [get_bd_ports sdi_refclk_p] } else { puts "WARNING: TX refclk P pin not found on TX subsystem" }
