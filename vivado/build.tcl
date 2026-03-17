@@ -96,6 +96,19 @@ proc get_first_bd_pin {cell_name pin_name_list} {
   return ""
 }
 
+proc get_first_bd_pin_by_pattern {cell_name pattern_list} {
+  set pin_list [get_bd_pins -quiet -of_objects [get_bd_cells $cell_name]]
+  foreach pat $pattern_list {
+    foreach pin $pin_list {
+      set n [get_property NAME $pin]
+      if {[regexp -nocase $pat $n]} {
+        return $pin
+      }
+    }
+  }
+  return ""
+}
+
 proc get_first_bd_intf_pin {cell_name intf_name_list} {
   foreach intf_name $intf_name_list {
     set p [get_bd_intf_pins -quiet ${cell_name}/${intf_name}]
@@ -141,6 +154,21 @@ proc connect_net_list {pin_list net_desc} {
   set root_pin [lindex $valid_pins 0]
   foreach p [lrange $valid_pins 1 end] {
     connect_bd_net $root_pin $p
+  }
+}
+
+proc assign_fixed_addr_if_present {addr_seg_path base_addr range_bytes} {
+  set seg [get_bd_addr_segs -quiet $addr_seg_path]
+  if {[llength $seg] > 0} {
+    assign_bd_address $seg
+    if {[catch {set_property offset $base_addr $seg} err1]} {
+      puts "WARNING: Failed to set offset ${base_addr} on ${addr_seg_path}: $err1"
+    }
+    if {[catch {set_property range $range_bytes $seg} err2]} {
+      puts "WARNING: Failed to set range ${range_bytes} on ${addr_seg_path}: $err2"
+    }
+  } else {
+    puts "WARNING: Address segment not found (${addr_seg_path}); skipping fixed mapping"
   }
 }
 
@@ -262,16 +290,16 @@ if {$rx_vid_out eq "" || $tx_vid_in eq ""} {
 
 puts "=== Step 13: Assign addresses ==="
 if {$rx_s_axi ne ""} {
-  assign_addr_if_present "sdi_rx_ss/[get_property NAME $rx_s_axi]/Reg"
+  assign_fixed_addr_if_present "sdi_rx_ss/[get_property NAME $rx_s_axi]/Reg" 0xA0000000 64K
 } else {
   puts "WARNING: SDI RX control AXI interface not present; skipping RX address assignment"
 }
 if {$tx_s_axi ne ""} {
-  assign_addr_if_present "sdi_tx_ss/[get_property NAME $tx_s_axi]/Reg"
+  assign_fixed_addr_if_present "sdi_tx_ss/[get_property NAME $tx_s_axi]/Reg" 0xA0010000 64K
 } else {
   puts "WARNING: SDI TX control AXI interface not present; skipping TX address assignment"
 }
-assign_addr_if_present "axi_gpio_0/S_AXI/Reg"
+assign_fixed_addr_if_present "axi_gpio_0/S_AXI/Reg" 0xA0020000 64K
 
 puts "=== Step 14: Build GPIO status vector ==="
 create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconcat:2.1 xlconcat_0
@@ -302,14 +330,19 @@ create_bd_port -dir O sdi_tx_n
 create_bd_port -dir I sdi_refclk_p
 create_bd_port -dir I sdi_refclk_n
 
-set rx_gt_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_p rxp]]
-set rx_gt_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_n rxn]]
-set tx_gt_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_p txp]]
-set tx_gt_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_n txn]]
+set rx_gt_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_p rxp rxp_in gt_rxp]]
+set rx_gt_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_n rxn rxn_in gt_rxn]]
+set tx_gt_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_p txp txp_out gt_txp]]
+set tx_gt_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_n txn txn_out gt_txn]]
 set rx_refclk_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_refclk_p gt_refclk_p refclk_p]]
 set rx_refclk_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_refclk_n gt_refclk_n refclk_n]]
 set tx_refclk_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_refclk_p gt_refclk_p refclk_p]]
 set tx_refclk_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_refclk_n gt_refclk_n refclk_n]]
+
+if {$rx_gt_p_pin eq ""} { set rx_gt_p_pin [get_first_bd_pin_by_pattern sdi_rx_ss [list {(^|/)rx.*(gt|serial).*(^|_)p($|_)} {(^|/)rxp($|_)}]] }
+if {$rx_gt_n_pin eq ""} { set rx_gt_n_pin [get_first_bd_pin_by_pattern sdi_rx_ss [list {(^|/)rx.*(gt|serial).*(^|_)n($|_)} {(^|/)rxn($|_)}]] }
+if {$tx_gt_p_pin eq ""} { set tx_gt_p_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/)tx.*(gt|serial).*(^|_)p($|_)} {(^|/)txp($|_)}]] }
+if {$tx_gt_n_pin eq ""} { set tx_gt_n_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/)tx.*(gt|serial).*(^|_)n($|_)} {(^|/)txn($|_)}]] }
 
 if {$rx_gt_p_pin ne ""} { connect_bd_net $rx_gt_p_pin [get_bd_ports sdi_rx_p] } else { error "Cannot find SDI RX positive serial pin on RX subsystem." }
 if {$rx_gt_n_pin ne ""} { connect_bd_net $rx_gt_n_pin [get_bd_ports sdi_rx_n] } else { error "Cannot find SDI RX negative serial pin on RX subsystem." }
