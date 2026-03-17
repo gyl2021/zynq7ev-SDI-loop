@@ -160,12 +160,9 @@ proc connect_net_list {pin_list net_desc} {
 proc assign_fixed_addr_if_present {addr_seg_path base_addr range_bytes} {
   set seg [get_bd_addr_segs -quiet $addr_seg_path]
   if {[llength $seg] > 0} {
-    assign_bd_address $seg
-    if {[catch {set_property offset $base_addr $seg} err1]} {
-      puts "WARNING: Failed to set offset ${base_addr} on ${addr_seg_path}: $err1"
-    }
-    if {[catch {set_property range $range_bytes $seg} err2]} {
-      puts "WARNING: Failed to set range ${range_bytes} on ${addr_seg_path}: $err2"
+    if {[catch {assign_bd_address -offset $base_addr -range $range_bytes $seg} err]} {
+      puts "WARNING: Failed fixed assign for ${addr_seg_path} @ ${base_addr} (${range_bytes}): $err"
+      assign_bd_address $seg
     }
   } else {
     puts "WARNING: Address segment not found (${addr_seg_path}); skipping fixed mapping"
@@ -330,21 +327,21 @@ create_bd_port -dir O sdi_tx_n
 create_bd_port -dir I sdi_refclk_p
 create_bd_port -dir I sdi_refclk_n
 
-set rx_gt_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_p rxp rxp_in gt_rxp]]
-set rx_gt_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_n rxn rxn_in gt_rxn]]
-set tx_gt_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_p txp txp_out gt_txp]]
-set tx_gt_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_n txn txn_out gt_txn]]
-set rx_refclk_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_refclk_p gt_refclk_p refclk_p]]
-set rx_refclk_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_refclk_n gt_refclk_n refclk_n]]
-set tx_refclk_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_refclk_p gt_refclk_p refclk_p]]
-set tx_refclk_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_refclk_n gt_refclk_n refclk_n]]
+set rx_gt_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_p rxp rxp_in gt_rxp gt_rxp_in gthrxp_in mgt_rx_p mgt_rxp]]
+set rx_gt_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_n rxn rxn_in gt_rxn gt_rxn_in gthrxn_in mgt_rx_n mgt_rxn]]
+set tx_gt_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_p txp txp_out gt_txp gt_txp_out gthtxp_out mgt_tx_p mgt_txp]]
+set tx_gt_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_n txn txn_out gt_txn gt_txn_out gthtxn_out mgt_tx_n mgt_txn]]
+set rx_refclk_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_refclk_p gt_refclk_p refclk_p gt_refclk_p_in mgt_refclk_p]]
+set rx_refclk_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_refclk_n gt_refclk_n refclk_n gt_refclk_n_in mgt_refclk_n]]
+set tx_refclk_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_refclk_p gt_refclk_p refclk_p gt_refclk_p_in mgt_refclk_p]]
+set tx_refclk_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_refclk_n gt_refclk_n refclk_n gt_refclk_n_in mgt_refclk_n]]
 
-if {$rx_gt_p_pin eq ""} { set rx_gt_p_pin [get_first_bd_pin_by_pattern sdi_rx_ss [list {(^|/)rx.*(gt|serial).*(^|_)p($|_)} {(^|/)rxp($|_)}]] }
-if {$rx_gt_n_pin eq ""} { set rx_gt_n_pin [get_first_bd_pin_by_pattern sdi_rx_ss [list {(^|/)rx.*(gt|serial).*(^|_)n($|_)} {(^|/)rxn($|_)}]] }
-if {$tx_gt_p_pin eq ""} { set tx_gt_p_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/)tx.*(gt|serial).*(^|_)p($|_)} {(^|/)txp($|_)}]] }
-if {$tx_gt_n_pin eq ""} { set tx_gt_n_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/)tx.*(gt|serial).*(^|_)n($|_)} {(^|/)txn($|_)}]] }
+if {$rx_gt_p_pin eq ""} { set rx_gt_p_pin [get_first_bd_pin_by_pattern sdi_rx_ss [list {(^|/).*(rx|gthrx|mgt_rx).*(^|_|/)p($|_|/)} {(^|/).*rxp.*}]] }
+if {$rx_gt_n_pin eq ""} { set rx_gt_n_pin [get_first_bd_pin_by_pattern sdi_rx_ss [list {(^|/).*(rx|gthrx|mgt_rx).*(^|_|/)n($|_|/)} {(^|/).*rxn.*}]] }
+if {$tx_gt_p_pin eq ""} { set tx_gt_p_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/).*(tx|gthtx|mgt_tx).*(^|_|/)p($|_|/)} {(^|/).*txp.*}]] }
+if {$tx_gt_n_pin eq ""} { set tx_gt_n_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/).*(tx|gthtx|mgt_tx).*(^|_|/)n($|_|/)} {(^|/).*txn.*}]] }
 
-if {$rx_gt_p_pin ne ""} { connect_bd_net $rx_gt_p_pin [get_bd_ports sdi_rx_p] } else { error "Cannot find SDI RX positive serial pin on RX subsystem." }
+if {$rx_gt_p_pin ne ""} { connect_bd_net $rx_gt_p_pin [get_bd_ports sdi_rx_p] } else { puts "RX pins available: [join [get_bd_pins -quiet -of_objects [get_bd_cells sdi_rx_ss]] , ]"; error "Cannot find SDI RX positive serial pin on RX subsystem." }
 if {$rx_gt_n_pin ne ""} { connect_bd_net $rx_gt_n_pin [get_bd_ports sdi_rx_n] } else { error "Cannot find SDI RX negative serial pin on RX subsystem." }
 if {$tx_gt_p_pin ne ""} { connect_bd_net $tx_gt_p_pin [get_bd_ports sdi_tx_p] } else { error "Cannot find SDI TX positive serial pin on TX subsystem." }
 if {$tx_gt_n_pin ne ""} { connect_bd_net $tx_gt_n_pin [get_bd_ports sdi_tx_n] } else { error "Cannot find SDI TX negative serial pin on TX subsystem." }
