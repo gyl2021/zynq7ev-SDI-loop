@@ -5,6 +5,16 @@ if {[llength [get_projects -quiet]] > 0} {
   close_project
 }
 
+
+proc pick_latest_ip_vlnv {ip_name} {
+  set defs [get_ipdefs -all -quiet -filter "VLNV =~ xilinx.com:ip:${ip_name}:*"]
+  if {[llength $defs] == 0} {
+    return ""
+  }
+  set sorted [lsort -dictionary $defs]
+  return [lindex $sorted end]
+}
+
 puts "=== Step 1: Create project ==="
 create_project sdi_loopthrough ./sdi_loopthrough \
   -part xczu7ev-ffvc1156-2-e -force
@@ -27,8 +37,13 @@ set_property -dict [list \
 ] [get_bd_cells zynq_ps]
 
 puts "=== Step 4: Create SDI RX Subsystem ==="
+set sdi_rx_vlnv [pick_latest_ip_vlnv "v_smpte_sdi_rx_ss"]
+if {$sdi_rx_vlnv eq ""} {
+  error "No SDI RX subsystem IP found in catalog (expected xilinx.com:ip:v_smpte_sdi_rx_ss:*)."
+}
+puts "Using SDI RX IP: $sdi_rx_vlnv"
 create_bd_cell -type ip \
-  -vlnv xilinx.com:ip:v_smpte_sdi_rx_ss:2.0 sdi_rx_ss
+  -vlnv $sdi_rx_vlnv sdi_rx_ss
 set_property -dict [list \
   CONFIG.C_SDI_MODE               {3G_SDI} \
   CONFIG.C_INCLUDE_RX             {1}      \
@@ -38,8 +53,13 @@ set_property -dict [list \
 ] [get_bd_cells sdi_rx_ss]
 
 puts "=== Step 5: Create SDI TX Subsystem ==="
+set sdi_tx_vlnv [pick_latest_ip_vlnv "v_smpte_sdi_tx_ss"]
+if {$sdi_tx_vlnv eq ""} {
+  error "No SDI TX subsystem IP found in catalog (expected xilinx.com:ip:v_smpte_sdi_tx_ss:*)."
+}
+puts "Using SDI TX IP: $sdi_tx_vlnv"
 create_bd_cell -type ip \
-  -vlnv xilinx.com:ip:v_smpte_sdi_tx_ss:2.0 sdi_tx_ss
+  -vlnv $sdi_tx_vlnv sdi_tx_ss
 set_property -dict [list \
   CONFIG.C_SDI_MODE               {3G_SDI} \
   CONFIG.C_INCLUDE_TX             {1}      \
