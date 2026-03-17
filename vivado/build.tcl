@@ -114,6 +114,23 @@ proc connect_intf_if_present {src_intf dst_intf desc} {
   connect_bd_intf_net $src_intf $dst_intf
 }
 
+proc connect_net_list {pin_list net_desc} {
+  set valid_pins {}
+  foreach p $pin_list {
+    if {$p ne ""} {
+      lappend valid_pins $p
+    }
+  }
+  if {[llength $valid_pins] < 2} {
+    puts "WARNING: Skipping net connection for ${net_desc}; not enough pins"
+    return
+  }
+  set root_pin [lindex $valid_pins 0]
+  foreach p [lrange $valid_pins 1 end] {
+    connect_bd_net $root_pin $p
+  }
+}
+
 proc assign_addr_if_present {addr_seg_path} {
   set seg [get_bd_addr_segs -quiet $addr_seg_path]
   if {[llength $seg] > 0} {
@@ -195,7 +212,7 @@ set tx_axi_aclk [get_first_bd_pin sdi_tx_ss [list s_axi_aclk s_axi_ctrl_aclk]]
 set clk_nets [list   [get_bd_pins zynq_ps/pl_clk0]   [get_bd_pins zynq_ps/maxihpm0_fpd_aclk]   [get_bd_pins axi_ic/ACLK]   [get_bd_pins axi_ic/S00_ACLK]   [get_bd_pins axi_ic/M00_ACLK]   [get_bd_pins axi_ic/M01_ACLK]   [get_bd_pins axi_ic/M02_ACLK]   [get_bd_pins axi_gpio_0/s_axi_aclk]   [get_bd_pins proc_sys_reset_0/slowest_sync_clk] ]
 if {$rx_axi_aclk ne ""} { lappend clk_nets $rx_axi_aclk }
 if {$tx_axi_aclk ne ""} { lappend clk_nets $tx_axi_aclk }
-eval connect_bd_net $clk_nets
+connect_net_list $clk_nets "PL/AXI clocks"
 
 puts "=== Step 10: Connect resets ==="
 connect_bd_net [get_bd_pins zynq_ps/pl_resetn0]   [get_bd_pins proc_sys_reset_0/ext_reset_in]
@@ -205,7 +222,7 @@ set tx_axi_aresetn [get_first_bd_pin sdi_tx_ss [list s_axi_aresetn s_axi_ctrl_ar
 set periph_rst_nets [list   [get_bd_pins proc_sys_reset_0/peripheral_aresetn]   [get_bd_pins axi_gpio_0/s_axi_aresetn] ]
 if {$rx_axi_aresetn ne ""} { lappend periph_rst_nets $rx_axi_aresetn }
 if {$tx_axi_aresetn ne ""} { lappend periph_rst_nets $tx_axi_aresetn }
-eval connect_bd_net $periph_rst_nets
+connect_net_list $periph_rst_nets "peripheral resets"
 
 puts "=== Step 11: Connect AXI interfaces ==="
 connect_bd_intf_net   [get_bd_intf_pins zynq_ps/M_AXI_HPM0_FPD]   [get_bd_intf_pins axi_ic/S00_AXI]
