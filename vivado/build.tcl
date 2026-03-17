@@ -85,6 +85,44 @@ proc configure_sdi_tx {cell_name ip_vlnv} {
   }
 }
 
+
+proc get_first_bd_pin {cell_name pin_name_list} {
+  foreach pin_name $pin_name_list {
+    set p [get_bd_pins -quiet ${cell_name}/${pin_name}]
+    if {[llength $p] > 0} {
+      return [lindex $p 0]
+    }
+  }
+  return ""
+}
+
+proc get_first_bd_intf_pin {cell_name intf_name_list} {
+  foreach intf_name $intf_name_list {
+    set p [get_bd_intf_pins -quiet ${cell_name}/${intf_name}]
+    if {[llength $p] > 0} {
+      return [lindex $p 0]
+    }
+  }
+  return ""
+}
+
+proc connect_intf_if_present {src_intf dst_intf desc} {
+  if {$src_intf eq "" || $dst_intf eq ""} {
+    puts "WARNING: Skipping interface connection (${desc}) due to missing interface pin"
+    return
+  }
+  connect_bd_intf_net $src_intf $dst_intf
+}
+
+proc assign_addr_if_present {addr_seg_path} {
+  set seg [get_bd_addr_segs -quiet $addr_seg_path]
+  if {[llength $seg] > 0} {
+    assign_bd_address $seg
+  } else {
+    puts "WARNING: Address segment not found (${addr_seg_path}); skipping"
+  }
+}
+
 puts "=== Step 1: Create project ==="
 create_project sdi_loopthrough ./sdi_loopthrough \
   -part xczu7ev-ffvc1156-2-e -force
@@ -152,80 +190,72 @@ set_property -dict [list \
 ] [get_bd_cells axi_gpio_0]
 
 puts "=== Step 9: Connect clocks ==="
-connect_bd_net [get_bd_pins zynq_ps/pl_clk0] \
-  [get_bd_pins zynq_ps/maxihpm0_fpd_aclk] \
-  [get_bd_pins axi_ic/ACLK] \
-  [get_bd_pins axi_ic/S00_ACLK] \
-  [get_bd_pins axi_ic/M00_ACLK] \
-  [get_bd_pins axi_ic/M01_ACLK] \
-  [get_bd_pins axi_ic/M02_ACLK] \
-  [get_bd_pins sdi_rx_ss/s_axi_aclk] \
-  [get_bd_pins sdi_tx_ss/s_axi_aclk] \
-  [get_bd_pins axi_gpio_0/s_axi_aclk] \
-  [get_bd_pins proc_sys_reset_0/slowest_sync_clk]
+set rx_axi_aclk [get_first_bd_pin sdi_rx_ss [list s_axi_aclk s_axi_ctrl_aclk]]
+set tx_axi_aclk [get_first_bd_pin sdi_tx_ss [list s_axi_aclk s_axi_ctrl_aclk]]
+set clk_nets [list   [get_bd_pins zynq_ps/pl_clk0]   [get_bd_pins zynq_ps/maxihpm0_fpd_aclk]   [get_bd_pins axi_ic/ACLK]   [get_bd_pins axi_ic/S00_ACLK]   [get_bd_pins axi_ic/M00_ACLK]   [get_bd_pins axi_ic/M01_ACLK]   [get_bd_pins axi_ic/M02_ACLK]   [get_bd_pins axi_gpio_0/s_axi_aclk]   [get_bd_pins proc_sys_reset_0/slowest_sync_clk] ]
+if {$rx_axi_aclk ne ""} { lappend clk_nets $rx_axi_aclk }
+if {$tx_axi_aclk ne ""} { lappend clk_nets $tx_axi_aclk }
+eval connect_bd_net $clk_nets
 
 puts "=== Step 10: Connect resets ==="
-connect_bd_net [get_bd_pins zynq_ps/pl_resetn0] \
-  [get_bd_pins proc_sys_reset_0/ext_reset_in]
-connect_bd_net \
-  [get_bd_pins proc_sys_reset_0/interconnect_aresetn] \
-  [get_bd_pins axi_ic/ARESETN] \
-  [get_bd_pins axi_ic/S00_ARESETN] \
-  [get_bd_pins axi_ic/M00_ARESETN] \
-  [get_bd_pins axi_ic/M01_ARESETN] \
-  [get_bd_pins axi_ic/M02_ARESETN]
-connect_bd_net \
-  [get_bd_pins proc_sys_reset_0/peripheral_aresetn] \
-  [get_bd_pins sdi_rx_ss/s_axi_aresetn] \
-  [get_bd_pins sdi_tx_ss/s_axi_aresetn] \
-  [get_bd_pins axi_gpio_0/s_axi_aresetn]
+connect_bd_net [get_bd_pins zynq_ps/pl_resetn0]   [get_bd_pins proc_sys_reset_0/ext_reset_in]
+connect_bd_net   [get_bd_pins proc_sys_reset_0/interconnect_aresetn]   [get_bd_pins axi_ic/ARESETN]   [get_bd_pins axi_ic/S00_ARESETN]   [get_bd_pins axi_ic/M00_ARESETN]   [get_bd_pins axi_ic/M01_ARESETN]   [get_bd_pins axi_ic/M02_ARESETN]
+set rx_axi_aresetn [get_first_bd_pin sdi_rx_ss [list s_axi_aresetn s_axi_ctrl_aresetn]]
+set tx_axi_aresetn [get_first_bd_pin sdi_tx_ss [list s_axi_aresetn s_axi_ctrl_aresetn]]
+set periph_rst_nets [list   [get_bd_pins proc_sys_reset_0/peripheral_aresetn]   [get_bd_pins axi_gpio_0/s_axi_aresetn] ]
+if {$rx_axi_aresetn ne ""} { lappend periph_rst_nets $rx_axi_aresetn }
+if {$tx_axi_aresetn ne ""} { lappend periph_rst_nets $tx_axi_aresetn }
+eval connect_bd_net $periph_rst_nets
 
 puts "=== Step 11: Connect AXI interfaces ==="
-connect_bd_intf_net \
-  [get_bd_intf_pins zynq_ps/M_AXI_HPM0_FPD] \
-  [get_bd_intf_pins axi_ic/S00_AXI]
-connect_bd_intf_net \
-  [get_bd_intf_pins axi_ic/M00_AXI] \
-  [get_bd_intf_pins sdi_rx_ss/S_AXI]
-connect_bd_intf_net \
-  [get_bd_intf_pins axi_ic/M01_AXI] \
-  [get_bd_intf_pins sdi_tx_ss/S_AXI]
-connect_bd_intf_net \
-  [get_bd_intf_pins axi_ic/M02_AXI] \
-  [get_bd_intf_pins axi_gpio_0/S_AXI]
+connect_bd_intf_net   [get_bd_intf_pins zynq_ps/M_AXI_HPM0_FPD]   [get_bd_intf_pins axi_ic/S00_AXI]
+set rx_s_axi [get_first_bd_intf_pin sdi_rx_ss [list S_AXI S_AXI_CTRL S_AXI_CTRL_REG]]
+set tx_s_axi [get_first_bd_intf_pin sdi_tx_ss [list S_AXI S_AXI_CTRL S_AXI_CTRL_REG]]
+connect_intf_if_present [get_bd_intf_pins axi_ic/M00_AXI] $rx_s_axi "AXI IC M00 -> SDI RX control"
+connect_intf_if_present [get_bd_intf_pins axi_ic/M01_AXI] $tx_s_axi "AXI IC M01 -> SDI TX control"
+connect_bd_intf_net   [get_bd_intf_pins axi_ic/M02_AXI]   [get_bd_intf_pins axi_gpio_0/S_AXI]
 
 puts "=== Step 12: Connect SDI RX to SDI TX video stream ==="
-connect_bd_intf_net \
-  [get_bd_intf_pins sdi_rx_ss/M_AXIS_VIDEO] \
-  [get_bd_intf_pins sdi_tx_ss/S_AXIS_VIDEO]
+set rx_vid_out [get_first_bd_intf_pin sdi_rx_ss [list M_AXIS_VIDEO M_AXIS]]
+set tx_vid_in  [get_first_bd_intf_pin sdi_tx_ss [list S_AXIS_VIDEO S_AXIS]]
+if {$rx_vid_out eq "" || $tx_vid_in eq ""} {
+  error "Unable to find compatible SDI video-stream interfaces for RX->TX connection."
+}
+connect_bd_intf_net $rx_vid_out $tx_vid_in
 
 puts "=== Step 13: Assign addresses ==="
-assign_bd_address [get_bd_addr_segs {sdi_rx_ss/S_AXI/Reg}]
-assign_bd_address [get_bd_addr_segs {sdi_tx_ss/S_AXI/Reg}]
-assign_bd_address [get_bd_addr_segs {axi_gpio_0/S_AXI/Reg}]
+if {$rx_s_axi ne ""} {
+  assign_addr_if_present "sdi_rx_ss/[get_property NAME $rx_s_axi]/Reg"
+} else {
+  puts "WARNING: SDI RX control AXI interface not present; skipping RX address assignment"
+}
+if {$tx_s_axi ne ""} {
+  assign_addr_if_present "sdi_tx_ss/[get_property NAME $tx_s_axi]/Reg"
+} else {
+  puts "WARNING: SDI TX control AXI interface not present; skipping TX address assignment"
+}
+assign_addr_if_present "axi_gpio_0/S_AXI/Reg"
 
 puts "=== Step 14: Build GPIO status vector ==="
-create_bd_cell -type ip \
-  -vlnv xilinx.com:ip:xlconcat:2.1 xlconcat_0
+create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconcat:2.1 xlconcat_0
 set_property CONFIG.NUM_PORTS {8} [get_bd_cells xlconcat_0]
-connect_bd_net [get_bd_pins sdi_rx_ss/rx_locked] \
-  [get_bd_pins xlconcat_0/In0]
-connect_bd_net [get_bd_pins sdi_tx_ss/tx_locked] \
-  [get_bd_pins xlconcat_0/In1]
-connect_bd_net [get_bd_pins sdi_rx_ss/rx_ce] \
-  [get_bd_pins xlconcat_0/In2]
-connect_bd_net [get_bd_pins sdi_rx_ss/sdi_rx_mode_locked] \
-  [get_bd_pins xlconcat_0/In3]
-create_bd_cell -type ip \
-  -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_0
-set_property -dict [list \
-  CONFIG.CONST_WIDTH {4} \
-  CONFIG.CONST_VAL   {0} \
-] [get_bd_cells xlconstant_0]
-connect_bd_net [get_bd_pins xlconstant_0/dout] \
-  [get_bd_pins xlconcat_0/In4]
-connect_bd_net [get_bd_pins xlconcat_0/dout] \
-  [get_bd_pins axi_gpio_0/gpio_io_i]
+create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_stat0
+set_property -dict [list   CONFIG.CONST_WIDTH {1}   CONFIG.CONST_VAL   {0} ] [get_bd_cells xlconstant_stat0]
+
+set rx_locked_pin [get_first_bd_pin sdi_rx_ss [list rx_locked rx_mode_locked]]
+set tx_locked_pin [get_first_bd_pin sdi_tx_ss [list tx_locked tx_mode_locked]]
+set rx_ce_pin [get_first_bd_pin sdi_rx_ss [list rx_ce]]
+set rx_mode_lock_pin [get_first_bd_pin sdi_rx_ss [list sdi_rx_mode_locked rx_mode_locked]]
+
+if {$rx_locked_pin ne ""} { connect_bd_net $rx_locked_pin [get_bd_pins xlconcat_0/In0] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In0] }
+if {$tx_locked_pin ne ""} { connect_bd_net $tx_locked_pin [get_bd_pins xlconcat_0/In1] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In1] }
+if {$rx_ce_pin ne ""} { connect_bd_net $rx_ce_pin [get_bd_pins xlconcat_0/In2] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In2] }
+if {$rx_mode_lock_pin ne ""} { connect_bd_net $rx_mode_lock_pin [get_bd_pins xlconcat_0/In3] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In3] }
+
+create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_0
+set_property -dict [list   CONFIG.CONST_WIDTH {4}   CONFIG.CONST_VAL   {0} ] [get_bd_cells xlconstant_0]
+connect_bd_net [get_bd_pins xlconstant_0/dout]   [get_bd_pins xlconcat_0/In4]
+connect_bd_net [get_bd_pins xlconcat_0/dout]   [get_bd_pins axi_gpio_0/gpio_io_i]
 
 puts "=== Step 15: Create top-level external ports ==="
 create_bd_port -dir I sdi_rx_p
@@ -235,22 +265,23 @@ create_bd_port -dir O sdi_tx_n
 create_bd_port -dir I sdi_refclk_p
 create_bd_port -dir I sdi_refclk_n
 
-connect_bd_net [get_bd_pins sdi_rx_ss/rx_gt_p] \
-  [get_bd_ports sdi_rx_p]
-connect_bd_net [get_bd_pins sdi_rx_ss/rx_gt_n] \
-  [get_bd_ports sdi_rx_n]
-connect_bd_net [get_bd_pins sdi_tx_ss/tx_gt_p] \
-  [get_bd_ports sdi_tx_p]
-connect_bd_net [get_bd_pins sdi_tx_ss/tx_gt_n] \
-  [get_bd_ports sdi_tx_n]
-connect_bd_net [get_bd_pins sdi_rx_ss/rx_gt_refclk_p] \
-  [get_bd_ports sdi_refclk_p]
-connect_bd_net [get_bd_pins sdi_rx_ss/rx_gt_refclk_n] \
-  [get_bd_ports sdi_refclk_n]
-connect_bd_net [get_bd_pins sdi_tx_ss/tx_gt_refclk_p] \
-  [get_bd_ports sdi_refclk_p]
-connect_bd_net [get_bd_pins sdi_tx_ss/tx_gt_refclk_n] \
-  [get_bd_ports sdi_refclk_n]
+set rx_gt_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_p rxp]]
+set rx_gt_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_n rxn]]
+set tx_gt_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_p txp]]
+set tx_gt_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_n txn]]
+set rx_refclk_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_refclk_p gt_refclk_p refclk_p]]
+set rx_refclk_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_refclk_n gt_refclk_n refclk_n]]
+set tx_refclk_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_refclk_p gt_refclk_p refclk_p]]
+set tx_refclk_n_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_refclk_n gt_refclk_n refclk_n]]
+
+if {$rx_gt_p_pin ne ""} { connect_bd_net $rx_gt_p_pin [get_bd_ports sdi_rx_p] } else { error "Cannot find SDI RX positive serial pin on RX subsystem." }
+if {$rx_gt_n_pin ne ""} { connect_bd_net $rx_gt_n_pin [get_bd_ports sdi_rx_n] } else { error "Cannot find SDI RX negative serial pin on RX subsystem." }
+if {$tx_gt_p_pin ne ""} { connect_bd_net $tx_gt_p_pin [get_bd_ports sdi_tx_p] } else { error "Cannot find SDI TX positive serial pin on TX subsystem." }
+if {$tx_gt_n_pin ne ""} { connect_bd_net $tx_gt_n_pin [get_bd_ports sdi_tx_n] } else { error "Cannot find SDI TX negative serial pin on TX subsystem." }
+if {$rx_refclk_p_pin ne ""} { connect_bd_net $rx_refclk_p_pin [get_bd_ports sdi_refclk_p] } else { puts "WARNING: RX refclk P pin not found on RX subsystem" }
+if {$rx_refclk_n_pin ne ""} { connect_bd_net $rx_refclk_n_pin [get_bd_ports sdi_refclk_n] } else { puts "WARNING: RX refclk N pin not found on RX subsystem" }
+if {$tx_refclk_p_pin ne ""} { connect_bd_net $tx_refclk_p_pin [get_bd_ports sdi_refclk_p] } else { puts "WARNING: TX refclk P pin not found on TX subsystem" }
+if {$tx_refclk_n_pin ne ""} { connect_bd_net $tx_refclk_n_pin [get_bd_ports sdi_refclk_n] } else { puts "WARNING: TX refclk N pin not found on TX subsystem" }
 
 puts "=== Step 16: Validate design and generate wrapper ==="
 validate_bd_design
