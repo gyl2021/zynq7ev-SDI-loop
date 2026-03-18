@@ -373,17 +373,19 @@ set_property -dict [list CONFIG.DIN_FROM {0} CONFIG.DIN_TO {0} CONFIG.DIN_WIDTH 
 set_property -dict [list CONFIG.DIN_FROM {0} CONFIG.DIN_TO {0} CONFIG.DIN_WIDTH {32} CONFIG.DOUT_WIDTH {1}] [get_bd_cells xlslice_rx_mode_locked]
 
 create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_stat0
+create_bd_cell -type ip   -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_statvec0
 set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {0}] [get_bd_cells xlconstant_stat0]
+set_property -dict [list CONFIG.CONST_WIDTH {32} CONFIG.CONST_VAL {0}] [get_bd_cells xlconstant_statvec0]
 
 set rx_locked_pin [get_first_bd_pin sdi_rx_ss [list rx_locked rx_mode_locked]]
 set tx_locked_pin [get_first_bd_pin sdi_tx_ss [list tx_locked tx_mode_locked]]
 set rx_ce_pin [get_first_bd_pin sdi_rx_ss [list rx_ce]]
 set rx_mode_lock_pin [get_first_bd_pin sdi_rx_ss [list sdi_rx_mode_locked rx_mode_locked]]
 
-if {$rx_locked_pin ne ""} { connect_bd_net $rx_locked_pin [get_bd_pins xlslice_rx_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlslice_rx_locked/Din] }
-if {$tx_locked_pin ne ""} { connect_bd_net $tx_locked_pin [get_bd_pins xlslice_tx_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlslice_tx_locked/Din] }
-if {$rx_ce_pin ne ""} { connect_bd_net $rx_ce_pin [get_bd_pins xlslice_rx_ce/Din] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlslice_rx_ce/Din] }
-if {$rx_mode_lock_pin ne ""} { connect_bd_net $rx_mode_lock_pin [get_bd_pins xlslice_rx_mode_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlslice_rx_mode_locked/Din] }
+if {$rx_locked_pin ne ""} { connect_bd_net $rx_locked_pin [get_bd_pins xlslice_rx_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_statvec0/dout] [get_bd_pins xlslice_rx_locked/Din] }
+if {$tx_locked_pin ne ""} { connect_bd_net $tx_locked_pin [get_bd_pins xlslice_tx_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_statvec0/dout] [get_bd_pins xlslice_tx_locked/Din] }
+if {$rx_ce_pin ne ""} { connect_bd_net $rx_ce_pin [get_bd_pins xlslice_rx_ce/Din] } else { connect_bd_net [get_bd_pins xlconstant_statvec0/dout] [get_bd_pins xlslice_rx_ce/Din] }
+if {$rx_mode_lock_pin ne ""} { connect_bd_net $rx_mode_lock_pin [get_bd_pins xlslice_rx_mode_locked/Din] } else { connect_bd_net [get_bd_pins xlconstant_statvec0/dout] [get_bd_pins xlslice_rx_mode_locked/Din] }
 
 connect_bd_net [get_bd_pins xlslice_rx_locked/Dout] [get_bd_pins xlconcat_0/In0]
 connect_bd_net [get_bd_pins xlslice_tx_locked/Dout] [get_bd_pins xlconcat_0/In1]
