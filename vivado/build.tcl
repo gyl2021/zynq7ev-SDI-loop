@@ -399,13 +399,6 @@ connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_pins xlconcat_0/In7]
 connect_bd_net [get_bd_pins xlconcat_0/dout]   [get_bd_pins axi_gpio_0/gpio_io_i]
 
 puts "=== Step 15: Create top-level external ports ==="
-create_bd_port -dir I sdi_rx_p
-create_bd_port -dir I sdi_rx_n
-create_bd_port -dir O sdi_tx_p
-create_bd_port -dir O sdi_tx_n
-create_bd_port -dir I sdi_refclk_p
-create_bd_port -dir I sdi_refclk_n
-
 set rx_gt_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_p rxp rxp_in gt_rxp gt_rxp_in gthrxp_in mgt_rx_p mgt_rxp]]
 set rx_gt_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_n rxn rxn_in gt_rxn gt_rxn_in gthrxn_in mgt_rx_n mgt_rxn]]
 set tx_gt_p_pin [get_first_bd_pin sdi_tx_ss [list tx_gt_p txp txp_out gt_txp gt_txp_out gthtxp_out mgt_tx_p mgt_txp]]
@@ -420,14 +413,51 @@ if {$rx_gt_n_pin eq ""} { set rx_gt_n_pin [get_first_bd_pin_by_pattern sdi_rx_ss
 if {$tx_gt_p_pin eq ""} { set tx_gt_p_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/).*(tx|gthtx|mgt_tx).*(^|_|/)p($|_|/)} {(^|/).*txp.*}]] }
 if {$tx_gt_n_pin eq ""} { set tx_gt_n_pin [get_first_bd_pin_by_pattern sdi_tx_ss [list {(^|/).*(tx|gthtx|mgt_tx).*(^|_|/)n($|_|/)} {(^|/).*txn.*}]] }
 
-if {$rx_gt_p_pin ne ""} { connect_bd_net $rx_gt_p_pin [get_bd_ports sdi_rx_p] } else { puts "WARNING: RX P serial pin not found on RX subsystem (available pins: [join [get_bd_pins -quiet -of_objects [get_bd_cells sdi_rx_ss]] , ])" }
-if {$rx_gt_n_pin ne ""} { connect_bd_net $rx_gt_n_pin [get_bd_ports sdi_rx_n] } else { puts "WARNING: RX N serial pin not found on RX subsystem" }
-if {$tx_gt_p_pin ne ""} { connect_bd_net $tx_gt_p_pin [get_bd_ports sdi_tx_p] } else { puts "WARNING: TX P serial pin not found on TX subsystem" }
-if {$tx_gt_n_pin ne ""} { connect_bd_net $tx_gt_n_pin [get_bd_ports sdi_tx_n] } else { puts "WARNING: TX N serial pin not found on TX subsystem" }
-if {$rx_refclk_p_pin ne ""} { connect_bd_net $rx_refclk_p_pin [get_bd_ports sdi_refclk_p] } else { puts "WARNING: RX refclk P pin not found on RX subsystem" }
-if {$rx_refclk_n_pin ne ""} { connect_bd_net $rx_refclk_n_pin [get_bd_ports sdi_refclk_n] } else { puts "WARNING: RX refclk N pin not found on RX subsystem" }
-if {$tx_refclk_p_pin ne ""} { connect_bd_net $tx_refclk_p_pin [get_bd_ports sdi_refclk_p] } else { puts "WARNING: TX refclk P pin not found on TX subsystem" }
-if {$tx_refclk_n_pin ne ""} { connect_bd_net $tx_refclk_n_pin [get_bd_ports sdi_refclk_n] } else { puts "WARNING: TX refclk N pin not found on TX subsystem" }
+if {$rx_gt_p_pin ne ""} {
+  create_bd_port -dir I sdi_rx_p
+  connect_bd_net $rx_gt_p_pin [get_bd_ports sdi_rx_p]
+} else {
+  puts "WARNING: RX P serial pin not found on RX subsystem (available pins: [join [get_bd_pins -quiet -of_objects [get_bd_cells sdi_rx_ss]] , ])"
+}
+if {$rx_gt_n_pin ne ""} {
+  create_bd_port -dir I sdi_rx_n
+  connect_bd_net $rx_gt_n_pin [get_bd_ports sdi_rx_n]
+} else {
+  puts "WARNING: RX N serial pin not found on RX subsystem"
+}
+if {$tx_gt_p_pin ne ""} {
+  create_bd_port -dir O sdi_tx_p
+  connect_bd_net $tx_gt_p_pin [get_bd_ports sdi_tx_p]
+} else {
+  puts "WARNING: TX P serial pin not found on TX subsystem"
+}
+if {$tx_gt_n_pin ne ""} {
+  create_bd_port -dir O sdi_tx_n
+  connect_bd_net $tx_gt_n_pin [get_bd_ports sdi_tx_n]
+} else {
+  puts "WARNING: TX N serial pin not found on TX subsystem"
+}
+
+if {$rx_refclk_p_pin ne "" || $tx_refclk_p_pin ne ""} {
+  create_bd_port -dir I sdi_refclk_p
+  if {$rx_refclk_p_pin ne ""} {
+    connect_bd_net $rx_refclk_p_pin [get_bd_ports sdi_refclk_p]
+  } else {
+    connect_bd_net $tx_refclk_p_pin [get_bd_ports sdi_refclk_p]
+  }
+} else {
+  puts "WARNING: No refclk P pin found on RX/TX subsystem"
+}
+if {$rx_refclk_n_pin ne "" || $tx_refclk_n_pin ne ""} {
+  create_bd_port -dir I sdi_refclk_n
+  if {$rx_refclk_n_pin ne ""} {
+    connect_bd_net $rx_refclk_n_pin [get_bd_ports sdi_refclk_n]
+  } else {
+    connect_bd_net $tx_refclk_n_pin [get_bd_ports sdi_refclk_n]
+  }
+} else {
+  puts "WARNING: No refclk N pin found on RX/TX subsystem"
+}
 
 puts "=== Step 16: Validate design and generate wrapper ==="
 set bd_file [get_files system.bd]
