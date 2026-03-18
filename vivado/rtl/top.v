@@ -47,13 +47,14 @@ always @(posedge pl_clk0) begin
     hb_cnt <= hb_cnt + 1'b1;
 end
 
-// LED[0] mirrors RX lock status.
-assign led[0] = rx_locked;
-// LED[1] mirrors TX lock status.
-assign led[1] = tx_locked;
-// LED[2] is heartbeat bit from counter MSB.
-assign led[2] = hb_cnt[26];
-// LED[3] asserts error when either RX or TX is not locked.
-assign led[3] = ~(rx_locked & tx_locked);
+// LEDs are active-low on this board: drive high to keep LED off.
+// LED[0] turns on only when RX is locked.
+assign led[0] = ~rx_locked;
+// LED[1] turns on only when TX is locked.
+assign led[1] = ~tx_locked;
+// LED[2] is the active-low heartbeat output.
+assign led[2] = ~hb_cnt[26];
+// LED[3] turns on only when either RX or TX is unlocked.
+assign led[3] = rx_locked & tx_locked;
 
 endmodule
