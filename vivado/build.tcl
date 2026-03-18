@@ -430,13 +430,23 @@ if {$tx_refclk_p_pin ne ""} { connect_bd_net $tx_refclk_p_pin [get_bd_ports sdi_
 if {$tx_refclk_n_pin ne ""} { connect_bd_net $tx_refclk_n_pin [get_bd_ports sdi_refclk_n] } else { puts "WARNING: TX refclk N pin not found on TX subsystem" }
 
 puts "=== Step 16: Validate design and generate wrapper ==="
+set bd_file [get_files system.bd]
 validate_bd_design
 save_bd_design
-generate_target all [get_files system.bd]
-make_wrapper -files [get_files system.bd] -top
+generate_target all $bd_file
+
+# Build the BD in the top synthesis run to avoid a large fanout of OOC block runs.
+if {[catch {set_property synth_checkpoint_mode None $bd_file} err]} {
+  puts "WARNING: Failed to set synth_checkpoint_mode=None on system.bd: $err"
+} else {
+  puts "Configured system.bd synth_checkpoint_mode=None"
+}
+
+make_wrapper -files $bd_file -top
 add_files -norecurse \
   $proj_dir/sdi_loopthrough.gen/sources_1/bd/system/hdl/system_wrapper.v
 set_property top system_wrapper [current_fileset]
+update_compile_order -fileset sources_1
 
 puts "=== Step 16b: Add constraints (if present) ==="
 if {[file exists $constraints_file]} {
