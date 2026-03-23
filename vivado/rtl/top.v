@@ -29,18 +29,16 @@ reg  [26:0] hb_cnt;
 
 // Instantiate Vivado block-design generated top wrapper.
 system_wrapper u_system (
+    .pl_clk0      (pl_clk0),
+    .rx_locked    (rx_locked),
     .sdi_rx_p     (sdi_rx_p),
     .sdi_rx_n     (sdi_rx_n),
+    .tx_locked    (tx_locked),
     .sdi_tx_p     (sdi_tx_p),
     .sdi_tx_n     (sdi_tx_n),
     .sdi_refclk_p (sdi_refclk_p),
     .sdi_refclk_n (sdi_refclk_n)
 );
-
-// Access selected internal BD status/clock nets for board-level indicators.
-assign pl_clk0   = u_system.zynq_ps_pl_clk0;
-assign rx_locked = u_system.sdi_rx_ss_rx_locked;
-assign tx_locked = u_system.sdi_tx_ss_tx_locked;
 
 // Heartbeat counter: synchronous increment on each PL clock edge.
 always @(posedge pl_clk0) begin

@@ -405,6 +405,9 @@ create_bd_port -dir O sdi_tx_p
 create_bd_port -dir O sdi_tx_n
 create_bd_port -dir I sdi_refclk_p
 create_bd_port -dir I sdi_refclk_n
+create_bd_port -dir O pl_clk0
+create_bd_port -dir O rx_locked
+create_bd_port -dir O tx_locked
 
 set rx_gt_p_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_p rxp rxp_in gt_rxp gt_rxp_in gthrxp_in mgt_rx_p mgt_rxp]]
 set rx_gt_n_pin [get_first_bd_pin sdi_rx_ss [list rx_gt_n rxn rxn_in gt_rxn gt_rxn_in gthrxn_in mgt_rx_n mgt_rxn]]
@@ -458,6 +461,18 @@ if {$rx_refclk_n_pin ne "" || $tx_refclk_n_pin ne ""} {
   }
 } else {
   puts "WARNING: No refclk N pin found on RX/TX subsystem"
+}
+
+connect_bd_net [get_bd_pins zynq_ps/pl_clk0] [get_bd_ports pl_clk0]
+if {$rx_locked_pin ne ""} {
+  connect_bd_net $rx_locked_pin [get_bd_ports rx_locked]
+} else {
+  connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_ports rx_locked]
+}
+if {$tx_locked_pin ne ""} {
+  connect_bd_net $tx_locked_pin [get_bd_ports tx_locked]
+} else {
+  connect_bd_net [get_bd_pins xlconstant_stat0/dout] [get_bd_ports tx_locked]
 }
 
 puts "=== Step 16: Validate design and generate wrapper ==="
